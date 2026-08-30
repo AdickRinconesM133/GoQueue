@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"math"
+	"math/rand/v2"
 	"net/http"
 	"sync"
 	"time"
@@ -56,6 +58,58 @@ func (s JobStatus) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.String())
 }
 
+func jobHandler(id string) {
+	const (
+		maxDelay = 30 * time.Second
+		maxRetry = 10
+	)
+
+	mu.Lock()
+	job, exist := jobStore[id]
+	mu.Unlock()
+
+	if !exist {
+		log.Printf("Job %s not found\n", id)
+		return
+	}
+
+	if job.RetryCount == maxRetry {
+		job.Status = StatusDeadLetter
+
+		mu.Lock()
+		jobStore[id] = job
+		mu.Unlock()
+		return
+	}
+
+	randNum := rand.IntN(2)
+	log.Printf("%v", randNum)
+
+	job.RetryCount++
+
+	if randNum == 0 {
+		job.Status = StatusFailed
+
+		base := math.Pow(2, float64(job.RetryCount))
+		delay := time.Duration(base * float64(time.Second))
+
+		if delay > maxDelay {
+			delay = maxDelay
+		}
+
+		delay += time.Duration(rand.Float64() * 0.25 * float64(delay))
+		job.NextRetryAt = time.Now().Add(delay)
+	} else {
+		job.Status = StatusCompleted
+	}
+
+	mu.Lock()
+	jobStore[id] = job
+	mu.Unlock()
+
+	log.Printf("Job %s Procesed with Status: %s\n", job.ID, job.Status)
+}
+
 func createJobHandler(w http.ResponseWriter, r *http.Request) {
 	var job Job
 	if err := json.NewDecoder(r.Body).Decode(&job); err != nil {
@@ -70,6 +124,8 @@ func createJobHandler(w http.ResponseWriter, r *http.Request) {
 	jobStore[job.ID] = job
 	mu.Unlock()
 
+	go jobHandler(job.ID)
+
 	log.Printf("Received job: %+v\n", job)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -77,9 +133,33 @@ func createJobHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(job)
 }
 
+func checkPendingJobs() {
+	mu.Lock()
+	snapshot := make(map[string]Job, len(jobStore))
+
+	for id, job := range jobStore {
+		snapshot[id] = job
+	}
+	mu.Unlock()
+
+	for id, job := range snapshot {
+		if job.Status == StatusFailed && job.NextRetryAt.Before(time.Now()) {
+			log.Printf("Retrying job: %s", id)
+			go jobHandler(id)
+		}
+	}
+}
+
 func main() {
 	r := chi.NewRouter()
 	r.Post("/jobs", createJobHandler)
+
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		for range ticker.C {
+			checkPendingJobs()
+		}
+	}()
 
 	log.Printf("server running on: 8080")
 	http.ListenAndServe(":8080", r)
