@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"math"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 )
 
 type JobStatus int
@@ -27,6 +29,8 @@ type Job struct {
 var (
 	jobStore = make(map[string]Job)
 	mu       sync.Mutex
+	rdb      *redis.Client
+	ctx      = context.Background()
 )
 
 const (
@@ -150,7 +154,21 @@ func checkPendingJobs() {
 	}
 }
 
+func initRedis() {
+	rdb = redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+	})
+
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Could not connect to Redis: %v", err)
+	}
+
+	log.Printf("Redis connection: Successfull")
+}
+
 func main() {
+	initRedis()
+
 	r := chi.NewRouter()
 	r.Post("/jobs", createJobHandler)
 
