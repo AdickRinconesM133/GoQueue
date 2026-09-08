@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"encoding/json"
 	"log"
 	"math"
 	"math/rand/v2"
@@ -44,8 +45,17 @@ func (s *Store) ProcessJob(id string) {
 	} else {
 		job.Status = StatusCompleted
 	}
-
 	s.Update(job)
-
 	log.Printf("Job %s Procesed with Status: %s\n", job.ID, job.Status)
+
+	jobJSON, err := json.Marshal(job)
+	if err != nil {
+		log.Printf("Failed to Marshal: %s", err.Error())
+		return
+	}
+
+	_, err = s.rdb.Set(s.ctx, job.IdempotencyKey, jobJSON, 0).Result()
+	if err != nil {
+		log.Printf("Failed to store Job in Redis: %s", jobJSON)
+	}
 }

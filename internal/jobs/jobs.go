@@ -11,12 +11,13 @@ import (
 type JobStatus int
 
 type Job struct {
-	ID          string          `json:"id"`
-	Type        string          `json:"type"`
-	Payload     json.RawMessage `json:"payload"`
-	Status      JobStatus       `json:"status"`
-	RetryCount  int             `json:"retry_count"`
-	NextRetryAt time.Time       `json:"next_retry_at"`
+	ID             string          `json:"id"`
+	IdempotencyKey string          `json:"idempotencykey"`
+	Type           string          `json:"type"`
+	Payload        json.RawMessage `json:"payload"`
+	Status         JobStatus       `json:"status"`
+	RetryCount     int             `json:"retry_count"`
+	NextRetryAt    time.Time       `json:"next_retry_at"`
 }
 
 const (
