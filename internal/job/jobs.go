@@ -1,6 +1,6 @@
 // Package jobs gestiona la creacion, almacenamiento y
 // procesamiento de tareas en segundo plano (workers)
-package jobs
+package job
 
 import (
 	"encoding/json"
